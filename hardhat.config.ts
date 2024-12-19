@@ -2,9 +2,6 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "dotenv/config";
 
-// Ve a https://infura.io, regístrate, crea una nueva clave API
-// en su panel, y reemplázala por "KEY"
-
 // Reemplaza esta clave privada por la clave privada de tu cuenta Sepolia
 // Para exportar tu clave privada desde Metamask, abre Metamask y
 // ve a Detalles de la Cuenta > Exportar Clave Privada

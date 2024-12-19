@@ -9,14 +9,23 @@ describe("TokenFarm", function () {
   async function deployTokenFarmFixture() {
     const [owner, user1, user2] = await hre.ethers.getSigners();
 
+    // Todo: Implementar la función de despliegue
     // Desplegar DAppToken
     const DAppToken = await hre.ethers.getContractFactory("DAppToken");
-    const dappToken = await DAppToken.deploy();
+    const dappToken = await DAppToken
+      .deploy
+      // Parámetros de despliegue
+      ();
     await dappToken.waitForDeployment();
 
+    // Todo: Implementar la función de despliegue
     // Desplegar LPToken
     const LPToken = await hre.ethers.getContractFactory("LPToken");
-    const lpToken = await LPToken.deploy();
+    const lpToken = await LPToken
+      .deploy
+      // Parámetros de despliegue;
+      ();
+
     await lpToken.waitForDeployment();
 
     // Desplegar TokenFarm

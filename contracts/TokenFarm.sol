@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
-
-import "./DappToken.sol";
-import "./LPToken.sol";
-
 /**
  * @author Oscar W arrieta
  * @title Proportional Token Farm
  * @notice Una granja de staking donde las recompensas se distribuyen proporcionalmente al total stakeado.
  */
+
+import "./DappToken.sol";
+import "./LPToken.sol";
+
 contract TokenFarm {
     // Variables de estado
-    string public name = "Proportional Token Farm";
+    string public name = "Proportional LPToken Farm";
     address public owner;
     DAppToken public dappToken;
     LPToken public lpToken;
@@ -174,5 +174,13 @@ contract TokenFarm {
 
         // Actualizar checkpoint
         staker.checkpoint = block.number;
+    }
+    // Función para obtener el total de tokens en staking
+    function getTotalStakingBalance() public view returns (uint256) {
+        return totalStakingBalance;
+    }
+    // Función para obtener el total de LP tokens en el Pool
+    function getLPTokenBalance() public view returns (uint256) {
+        return lpToken.balanceOf(address(this));
     }
 }
