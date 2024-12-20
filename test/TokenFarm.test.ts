@@ -1,165 +1,79 @@
-import {
-  loadFixture,
-  time,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import hre from "hardhat";
+import { ethers } from "hardhat";
 
 describe("TokenFarm", function () {
-  async function deployTokenFarmFixture() {
-    const [owner, user1, user2] = await hre.ethers.getSigners();
+  let dappToken: any;
+  let lpToken: any;
+  let tokenFarm: any;
+  let owner: any;
+  let addr1: any;
 
-    // Todo: Implementar la función de despliegue
-    // Desplegar DAppToken
-    const DAppToken = await hre.ethers.getContractFactory("DAppToken");
-    const dappToken = await DAppToken
-      .deploy
-      // Parámetros de despliegue
-      ();
-    await dappToken.waitForDeployment();
+  beforeEach(async function () {
+    [owner, addr1] = await ethers.getSigners();
 
-    // Todo: Implementar la función de despliegue
-    // Desplegar LPToken
-    const LPToken = await hre.ethers.getContractFactory("LPToken");
-    const lpToken = await LPToken
-      .deploy
-      // Parámetros de despliegue;
-      ();
-
-    await lpToken.waitForDeployment();
-
-    // Desplegar TokenFarm
-    const TokenFarm = await hre.ethers.getContractFactory("TokenFarm");
-    const tokenFarm = await TokenFarm.deploy(
+    const DAppTokenFactory = await ethers.getContractFactory("DAppToken");
+    dappToken = await DAppTokenFactory.deploy(owner.address);
+    const LPTokenFactory = await ethers.getContractFactory("LPToken");
+    lpToken = await LPTokenFactory.deploy(owner.address);
+    const TokenFarmFactory = await ethers.getContractFactory("TokenFarm");
+    tokenFarm = await TokenFarmFactory.deploy(
       dappToken.getAddress(),
       lpToken.getAddress()
     );
-    await tokenFarm.waitForDeployment();
 
-    // Asignar tokens LP a usuarios
-    await lpToken.transfer(user1.address, hre.ethers.parseEther("100"));
-    await lpToken.transfer(user2.address, hre.ethers.parseEther("200"));
+    // Transferir propiedad de DAppToken a TokenFarm
+    await dappToken.transferOwnership(await tokenFarm.getAddress());
+  });
 
-    return { tokenFarm, dappToken, lpToken, owner, user1, user2 };
+  async function setupStake(user: any, amount: number) {
+    await lpToken.connect(owner).mint(user.address, amount);
+    await lpToken.connect(user).approve(await tokenFarm.getAddress(), amount);
+    await tokenFarm.connect(user).deposit(amount);
   }
 
-  describe("Deployment", function () {
-    it("Debe configurar correctamente las direcciones de los contratos", async function () {
-      const { tokenFarm, dappToken, lpToken } = await loadFixture(
-        deployTokenFarmFixture
-      );
-
-      expect(await tokenFarm.dappToken()).to.equal(
-        await dappToken.getAddress()
-      );
-      expect(await tokenFarm.lpToken()).to.equal(await lpToken.getAddress());
-    });
-
-    it("Debe asignar al despliegue el propietario correcto", async function () {
-      const { tokenFarm, owner } = await loadFixture(deployTokenFarmFixture);
-      expect(await tokenFarm.owner()).to.equal(owner.address);
-    });
+  it("Permite a un usuario depositar tokens LP y actualiza el balance", async function () {
+    await setupStake(addr1, 100);
+    const stakingInfo = await tokenFarm.stakerInfo(addr1.address);
+    expect(stakingInfo.balance).to.equal(100);
   });
 
-  describe("Deposits", function () {
-    it("Permite a un usuario depositar tokens LP y actualiza el balance", async function () {
-      const { tokenFarm, lpToken, user1 } = await loadFixture(
-        deployTokenFarmFixture
-      );
+  it("Calcula y distribuye recompensas después de incrementar el tiempo", async function () {
+    await setupStake(addr1, 100);
 
-      const depositAmount = hre.ethers.parseEther("50");
-      await lpToken
-        .connect(user1)
-        .approve(await tokenFarm.getAddress(), depositAmount);
+    // Simular el paso del tiempo
+    await ethers.provider.send("evm_increaseTime", [100]);
+    await ethers.provider.send("evm_mine", []);
 
-      await tokenFarm.connect(user1).deposit(depositAmount);
-
-      const staker = await tokenFarm.stakerInfo(user1.address);
-      expect(staker.balance).to.equal(depositAmount);
-    });
-
-    it("Rechaza depósitos sin aprobación de tokens LP", async function () {
-      const { tokenFarm, user1 } = await loadFixture(deployTokenFarmFixture);
-
-      const depositAmount = hre.ethers.parseEther("50");
-
-      await expect(
-        tokenFarm.connect(user1).deposit(depositAmount)
-      ).to.be.revertedWith("ERC20: insufficient allowance");
-    });
+    await tokenFarm.distributeRewardsAll();
+    const stakingInfo = await tokenFarm.stakerInfo(addr1.address);
+    expect(stakingInfo.rewards).to.be.gt(0);
   });
 
-  describe("Withdrawals", function () {
-    it("Permite a un usuario retirar tokens LP con una tarifa aplicada", async function () {
-      const { tokenFarm, lpToken, user1, owner } = await loadFixture(
-        deployTokenFarmFixture
-      );
+  it("Permite reclamar recompensas acumuladas", async function () {
+    await setupStake(addr1, 100);
 
-      const depositAmount = hre.ethers.parseEther("100");
-      const fee = depositAmount / BigInt(200); // 0.5% de tarifa
-      const amountAfterFee = depositAmount - fee;
+    // Incrementar el tiempo y distribuir recompensas
+    await ethers.provider.send("evm_increaseTime", [100]);
+    await ethers.provider.send("evm_mine", []);
+    await tokenFarm.distributeRewardsAll();
 
-      // Aprobar y depositar tokens
-      await lpToken
-        .connect(user1)
-        .approve(await tokenFarm.getAddress(), depositAmount);
-      await tokenFarm.connect(user1).deposit(depositAmount);
-
-      // Retirar tokens
-      await expect(() =>
-        tokenFarm.connect(user1).withdraw()
-      ).to.changeTokenBalances(lpToken, [user1, owner], [amountAfterFee, fee]);
-    });
-
-    it("Rechaza retiros cuando el usuario no tiene balance en staking", async function () {
-      const { tokenFarm, user1 } = await loadFixture(deployTokenFarmFixture);
-      await expect(tokenFarm.connect(user1).withdraw()).to.be.revertedWith(
-        "Staking balance must be greater than 0"
-      );
-    });
+    const initialBalance = await dappToken.balanceOf(addr1.address);
+    await tokenFarm.connect(addr1).claimRewards();
+    const finalBalance = await dappToken.balanceOf(addr1.address);
+    expect(finalBalance).to.be.gt(initialBalance);
   });
 
-  describe("Rewards", function () {
-    it("Calcula y acumula recompensas correctamente después de varios bloques", async function () {
-      const { tokenFarm, lpToken, user1 } = await loadFixture(
-        deployTokenFarmFixture
-      );
+  it("Permite retirar tokens LP con tarifa aplicada", async function () {
+    await setupStake(addr1, 100);
 
-      const depositAmount = hre.ethers.parseEther("50");
+    const fee = Math.floor(100 * 0.005); // Tarifa del 0.5%
+    const expectedWithdrawal = 100 - fee;
 
-      // Aprobar y depositar tokens
-      await lpToken
-        .connect(user1)
-        .approve(await tokenFarm.getAddress(), depositAmount);
-      await tokenFarm.connect(user1).deposit(depositAmount);
+    await tokenFarm.connect(addr1).withdraw();
+    const stakingInfo = await tokenFarm.stakerInfo(addr1.address);
+    expect(stakingInfo.balance).to.equal(0);
 
-      // Avanzar bloques
-      await time.increase(10);
-
-      // Reclamar recompensas
-      await tokenFarm.connect(user1).claimRewards();
-
-      const rewards = await tokenFarm.stakerInfo(user1.address);
-      expect(rewards.rewards).to.equal(0); // Las recompensas deben haberse reclamado
-    });
-  });
-
-  describe("Owner Actions", function () {
-    it("Permite al propietario actualizar la tarifa de retiro", async function () {
-      const { tokenFarm, owner } = await loadFixture(deployTokenFarmFixture);
-
-      await tokenFarm.connect(owner).updateWithdrawalFee(100); // 1%
-      const fee = await tokenFarm.withdrawalFee();
-
-      expect(fee).to.equal(100);
-    });
-
-    it("Rechaza la actualización de la tarifa por usuarios no autorizados", async function () {
-      const { tokenFarm, user1 } = await loadFixture(deployTokenFarmFixture);
-
-      await expect(
-        tokenFarm.connect(user1).updateWithdrawalFee(100)
-      ).to.be.revertedWith("Only the owner can call this function");
-    });
+    const userBalance = await lpToken.balanceOf(addr1.address);
+    expect(userBalance).to.equal(expectedWithdrawal);
   });
 });

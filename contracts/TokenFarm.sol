@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
+
+import "./DappToken.sol";
+import "./LPToken.sol";
+
 /**
  * @author Oscar W arrieta
  * @title Proportional Token Farm
  * @notice Una granja de staking donde las recompensas se distribuyen proporcionalmente al total stakeado.
  */
 
-import "./DappToken.sol";
-import "./LPToken.sol";
-
 contract TokenFarm {
     // Variables de estado
-    string public name = "Proportional LPToken Farm";
+    string public name = "Proportional Token Farm";
     address public owner;
     DAppToken public dappToken;
     LPToken public lpToken;
@@ -72,9 +73,6 @@ contract TokenFarm {
         // Transferir tokens LP al contrato
         lpToken.transferFrom(msg.sender, address(this), _amount);
 
-        // Distribuir recompensas pendientes antes de actualizar balances
-        distributeRewards(msg.sender);
-
         // Actualizar información del staker
         Staker storage staker = stakerInfo[msg.sender];
         staker.balance += _amount;
@@ -90,6 +88,7 @@ contract TokenFarm {
             staker.checkpoint = block.number;
         }
 
+        // Emitir evento después de todos los efectos
         emit Deposit(msg.sender, _amount);
     }
 
@@ -100,9 +99,6 @@ contract TokenFarm {
         Staker storage staker = stakerInfo[msg.sender];
         require(staker.isStaking, "User is not staking");
         require(staker.balance > 0, "Staking balance must be greater than 0");
-
-        // Distribuir recompensas pendientes antes de retirar
-        distributeRewards(msg.sender);
 
         // Calcular la tarifa de retiro
         uint256 fee = (staker.balance * withdrawalFee) / 10000;
@@ -119,6 +115,7 @@ contract TokenFarm {
             lpToken.transfer(owner, fee);
         }
 
+        // Emitir evento después de todos los efectos
         emit Withdraw(msg.sender, amountAfterFee, fee);
     }
 
@@ -132,9 +129,10 @@ contract TokenFarm {
         uint256 pendingAmount = staker.rewards;
         staker.rewards = 0;
 
-        // Acuñar recompensas utilizando DappToken
+        // Acuñar recompensas utilizando DAppToken
         dappToken.mint(msg.sender, pendingAmount);
 
+        // Emitir evento después de todos los efectos
         emit RewardsClaimed(msg.sender, pendingAmount);
     }
 
@@ -175,12 +173,5 @@ contract TokenFarm {
         // Actualizar checkpoint
         staker.checkpoint = block.number;
     }
-    // Función para obtener el total de tokens en staking
-    function getTotalStakingBalance() public view returns (uint256) {
-        return totalStakingBalance;
-    }
-    // Función para obtener el total de LP tokens en el Pool
-    function getLPTokenBalance() public view returns (uint256) {
-        return lpToken.balanceOf(address(this));
-    }
+    
 }
